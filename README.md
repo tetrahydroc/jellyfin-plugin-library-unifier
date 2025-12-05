@@ -32,7 +32,7 @@ This plugin creates a unified structure:
 ### From Repository (Recommended)
 
 1. In Jellyfin, go to **Dashboard → Plugins → Repositories**
-2. Add repository URL: `https://raw.githubusercontent.com/tetrahydroc/jellyfin-plugin-library-unifier/main/repository.json`
+2. Add repository URL: `https://raw.githubusercontent.com/tetrahydroc/jellyfin-plugin-library-unifier/master/repository.json`
 3. Go to **Catalog** and install "Library Unifier"
 4. Restart Jellyfin
 
