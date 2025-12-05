@@ -1,0 +1,21 @@
+## .NET
+bin/
+obj/
+*.dll
+*.pdb
+*.user
+*.suo
+
+## IDE
+.vs/
+.vscode/
+*.swp
+.idea/
+
+## Build artifacts
+*.zip
+*.nupkg
+
+## OS
+.DS_Store
+Thumbs.db

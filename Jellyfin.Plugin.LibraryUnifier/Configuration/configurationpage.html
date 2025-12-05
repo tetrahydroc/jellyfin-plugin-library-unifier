@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Library Unifier</title>
+</head>
+
+<body>
+    <div data-role="page" class="page type-interior pluginConfigurationPage libraryUnifierConfigurationPage"
+        data-require="emby-input,emby-button">
+        <div data-role="content">
+            <div class="content-primary">
+                <form class="libraryUnifierConfigurationPage">
+                    <div class="sectionTitleContainer flex align-items-center">
+                        <h2 class="sectionTitle">Library Unifier</h2>
+                        <a is="emby-linkbutton" class="raised button-alt headerHelpButton emby-button" target="_blank"
+                            href="https://github.com/thc/jellyfin-plugin-library-unifier">Help</a>
+                    </div>
+                    <div class="verticalSection">
+                        <p>This plugin creates a unified library structure using symlinks to merge series from different folders.</p>
+                        <p>Series are matched by metadata provider IDs (TVDB, IMDB, TMDB) to ensure accurate merging.</p>
+                        <p> If you find find duplicates after creating you can try manually assigning a tmdb/imdb to the media and rerunning</p>
+                        <p><strong>How to use:</strong></p>
+                        <ol>
+                            <li>Set the output path below where the unified library will be created</li>
+                            <li>Click "Create Unified Library" to generate the symlinked structure</li>
+                            <li>Add the output path as a new TV library in Jellyfin</li>
+                        </ol>
+                        <br />
+                    </div>
+
+                    <div class="verticalSection">
+                        <h3 class="sectionTitle">Settings</h3>
+                        <div class="inputContainer">
+                            <label class="inputLabel" for="txtUnifiedLibraryPath">Unified Library Output Path:</label>
+                            <input is="emby-input" type="text" id="txtUnifiedLibraryPath"
+                                placeholder="/path/to/unified-tv (e.g. /storage/tv-unified)" />
+                            <div class="fieldDescription">Path where the unified library structure will be created using symlinks/hardlinks.</div>
+                        </div>
+                        <div class="checkboxContainer">
+                            <label>
+                                <input is="emby-checkbox" type="checkbox" id="chkPreferHardlinks" />
+                                <span>Prefer hardlinks over symlinks (requires same filesystem)</span>
+                            </label>
+                        </div>
+                    </div>
+                    <br />
+
+                    <button is="emby-button" type="button" class="raised button-submit block emby-button"
+                        id="save-btn" onclick=save()><span>Save</span></button>
+
+                    <h3 class="sectionTitle">Actions</h3>
+                    <button is="emby-button" type="button" class="raised block"
+                        onclick=createUnifiedLibrary()><span>Create Unified Library</span></button>
+                    <button is="emby-button" type="button" class="raised block"
+                        onclick=removeUnifiedLibrary()><span>Remove Unified Library</span></button>
+                </form>
+            </div>
+        </div>
+
+        <script type="text/javascript">
+            var pluginId = "b8e3c5a1-9d4f-4e2b-8c6a-1f3d5e7b9a0c";
+
+            function createUnifiedLibrary() {
+                var path = document.getElementById('txtUnifiedLibraryPath').value;
+                if (!path) {
+                    Dashboard.alert({ message: "Please enter a unified library path and save first." });
+                    return;
+                }
+                var request = {
+                    url: ApiClient.getUrl('LibraryUnifier/Create'),
+                    type: 'POST'
+                };
+                ApiClient.fetch(request).then(function () {
+                    Dashboard.alert("Creating unified library... Check Jellyfin logs for progress.");
+                }).catch(function () {
+                    Dashboard.alert({
+                        message: "Unexpected error occurred!"
+                    });
+                });
+            }
+
+            function removeUnifiedLibrary() {
+                var request = {
+                    url: ApiClient.getUrl('LibraryUnifier/Remove'),
+                    type: 'POST'
+                };
+                ApiClient.fetch(request).then(function () {
+                    Dashboard.alert("Removing unified library...");
+                }).catch(function () {
+                    Dashboard.alert({
+                        message: "Unexpected error occurred!"
+                    });
+                });
+            }
+
+            var config = {};
+
+            ApiClient.getPluginConfiguration(pluginId).then(function (savedConfig) {
+                config = savedConfig || {};
+
+                document.getElementById('txtUnifiedLibraryPath').value = config.UnifiedLibraryPath || '';
+                document.getElementById('chkPreferHardlinks').checked = config.PreferHardlinks !== false;
+            });
+
+            function save() {
+                var unifiedPath = document.getElementById('txtUnifiedLibraryPath').value;
+                var preferHardlinks = document.getElementById('chkPreferHardlinks').checked;
+
+                ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                    config.UnifiedLibraryPath = unifiedPath;
+                    config.PreferHardlinks = preferHardlinks;
+                    ApiClient.updatePluginConfiguration(pluginId, config).then(function (res) {
+                        Dashboard.processPluginConfigurationUpdateResult(res);
+                    });
+                });
+            }
+        </script>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,96 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Get version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Update version in csproj
+        run: |
+          sed -i "s/<AssemblyVersion>.*<\/AssemblyVersion>/<AssemblyVersion>${{ steps.version.outputs.version }}<\/AssemblyVersion>/" Jellyfin.Plugin.LibraryUnifier/Jellyfin.Plugin.LibraryUnifier.csproj
+          sed -i "s/<FileVersion>.*<\/FileVersion>/<FileVersion>${{ steps.version.outputs.version }}<\/FileVersion>/" Jellyfin.Plugin.LibraryUnifier/Jellyfin.Plugin.LibraryUnifier.csproj
+
+      - name: Build
+        run: dotnet build --configuration Release
+
+      - name: Create plugin package
+        run: |
+          cd Jellyfin.Plugin.LibraryUnifier/bin/Release/net9.0
+          zip -r ../../../../library-unifier-v${{ steps.version.outputs.version }}.zip *.dll *.json
+
+      - name: Generate checksum
+        id: checksum
+        run: |
+          checksum=$(md5sum library-unifier-v${{ steps.version.outputs.version }}.zip | awk '{print $1}')
+          echo "checksum=$checksum" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: library-unifier-v${{ steps.version.outputs.version }}.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update repository.json
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          CHECKSUM="${{ steps.checksum.outputs.checksum }}"
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          REPO_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/library-unifier-v${VERSION}.zip"
+
+          # Create updated repository.json
+          cat > repository.json << EOF
+          [
+            {
+              "guid": "b8e3c5a1-9d4f-4e2b-8c6a-1f3d5e7b9a0c",
+              "name": "Library Unifier",
+              "overview": "Creates a unified TV library using symlinks to merge series from different folders",
+              "description": "This plugin creates a unified library structure using symlinks/hardlinks. Series are matched by metadata provider IDs (TVDB, IMDB, TMDB) to ensure accurate merging.",
+              "owner": "tetrahydroc",
+              "category": "General",
+              "versions": [
+                {
+                  "version": "${VERSION}",
+                  "changelog": "See release notes on GitHub",
+                  "targetAbi": "10.11.0.0",
+                  "sourceUrl": "${REPO_URL}",
+                  "checksum": "${CHECKSUM}",
+                  "timestamp": "${TIMESTAMP}"
+                }
+              ]
+            }
+          ]
+          EOF
+
+      - name: Commit repository.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Get default branch name
+          DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d' ' -f5)
+          git fetch origin $DEFAULT_BRANCH
+          git checkout $DEFAULT_BRANCH
+          git add repository.json
+          git commit -m "Update repository.json for v${{ steps.version.outputs.version }}" || echo "No changes to commit"
+          git push origin $DEFAULT_BRANCH
