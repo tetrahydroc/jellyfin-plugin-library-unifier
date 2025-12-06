@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.IO;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -17,6 +18,7 @@ namespace Jellyfin.Plugin.LibraryUnifier
         private readonly ILibraryManager _libraryManager;
         private readonly ILogger<LibraryUnifierManager> _logger;
         private readonly IFileSystem _fileSystem;
+        private readonly IProviderManager _providerManager;
 
         private Timer _debounceTimer;
         private readonly object _timerLock = new object();
@@ -24,11 +26,13 @@ namespace Jellyfin.Plugin.LibraryUnifier
         public LibraryMonitor(
             ILibraryManager libraryManager,
             ILogger<LibraryUnifierManager> logger,
-            IFileSystem fileSystem)
+            IFileSystem fileSystem,
+            IProviderManager providerManager)
         {
             _libraryManager = libraryManager;
             _logger = logger;
             _fileSystem = fileSystem;
+            _providerManager = providerManager;
         }
 
         public Task StartAsync(CancellationToken cancellationToken)
@@ -91,7 +95,12 @@ namespace Jellyfin.Plugin.LibraryUnifier
 
             try
             {
-                var manager = new LibraryUnifierManager(_libraryManager, _logger, _fileSystem);
+                var manager = new LibraryUnifierManager(_libraryManager, _logger, _fileSystem, _providerManager);
+
+                // Run auto-identify first if enabled
+                await manager.AutoIdentifyUnmatchedSeriesAsync(null, CancellationToken.None);
+
+                // Then create the unified library
                 await manager.CreateUnifiedLibraryAsync(null);
                 _logger.LogInformation("Library Unifier: Unified library rebuilt successfully");
             }

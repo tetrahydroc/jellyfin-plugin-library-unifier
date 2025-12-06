@@ -1,6 +1,8 @@
 using System.Net.Mime;
+using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.IO;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -24,10 +26,11 @@ namespace Jellyfin.Plugin.LibraryUnifier.Api
         public LibraryUnifierController(
             ILibraryManager libraryManager,
             ILogger<LibraryUnifierManager> logger,
-            IFileSystem fileSystem
+            IFileSystem fileSystem,
+            IProviderManager providerManager
         )
         {
-            _manager = new LibraryUnifierManager(libraryManager, logger, fileSystem);
+            _manager = new LibraryUnifierManager(libraryManager, logger, fileSystem, providerManager);
             _logger = logger;
         }
 
@@ -41,6 +44,11 @@ namespace Jellyfin.Plugin.LibraryUnifier.Api
         public async Task<ActionResult> CreateUnifiedLibraryAsync()
         {
             _logger.LogInformation("Creating unified library structure");
+
+            // Run auto-identify first if enabled
+            await _manager.AutoIdentifyUnmatchedSeriesAsync(null, CancellationToken.None);
+
+            // Then create the unified library
             await _manager.CreateUnifiedLibraryAsync(null);
             _logger.LogInformation("Completed creating unified library");
             return NoContent();

@@ -43,6 +43,12 @@
                                 <span>Prefer hardlinks over symlinks (requires same filesystem)</span>
                             </label>
                         </div>
+                        <div class="checkboxContainer">
+                            <label>
+                                <input is="emby-checkbox" type="checkbox" id="chkEnableAutoIdentify" />
+                                <span>Auto-identify unmatched series (attempts to find provider IDs for series Jellyfin couldn't match)</span>
+                            </label>
+                        </div>
                     </div>
                     <br />
 
@@ -101,15 +107,18 @@
 
                 document.getElementById('txtUnifiedLibraryPath').value = config.UnifiedLibraryPath || '';
                 document.getElementById('chkPreferHardlinks').checked = config.PreferHardlinks !== false;
+                document.getElementById('chkEnableAutoIdentify').checked = config.EnableAutoIdentify !== false;
             });
 
             function save() {
                 var unifiedPath = document.getElementById('txtUnifiedLibraryPath').value;
                 var preferHardlinks = document.getElementById('chkPreferHardlinks').checked;
+                var enableAutoIdentify = document.getElementById('chkEnableAutoIdentify').checked;
 
                 ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                     config.UnifiedLibraryPath = unifiedPath;
                     config.PreferHardlinks = preferHardlinks;
+                    config.EnableAutoIdentify = enableAutoIdentify;
                     ApiClient.updatePluginConfiguration(pluginId, config).then(function (res) {
                         Dashboard.processPluginConfigurationUpdateResult(res);
                     });

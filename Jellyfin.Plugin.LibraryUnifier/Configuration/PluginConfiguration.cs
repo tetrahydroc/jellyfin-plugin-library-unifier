@@ -14,10 +14,16 @@ namespace Jellyfin.Plugin.LibraryUnifier.Configuration
         /// </summary>
         public bool PreferHardlinks { get; set; }
 
+        /// <summary>
+        /// Whether to automatically identify series that have no provider IDs before building the unified library.
+        /// </summary>
+        public bool EnableAutoIdentify { get; set; }
+
         public PluginConfiguration()
         {
             UnifiedLibraryPath = string.Empty;
             PreferHardlinks = true;
+            EnableAutoIdentify = true;
         }
     }
 }

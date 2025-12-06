@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Logging;
@@ -17,16 +18,22 @@ namespace Jellyfin.Plugin.LibraryUnifier.ScheduledTasks
         public UpdateUnifiedLibraryTask(
             ILibraryManager libraryManager,
             ILogger<LibraryUnifierManager> logger,
-            IFileSystem fileSystem
+            IFileSystem fileSystem,
+            IProviderManager providerManager
         )
         {
             _logger = logger;
-            _manager = new LibraryUnifierManager(libraryManager, logger, fileSystem);
+            _manager = new LibraryUnifierManager(libraryManager, logger, fileSystem, providerManager);
         }
 
         public async Task Execute(CancellationToken cancellationToken, IProgress<double> progress)
         {
             _logger.LogInformation("Starting scheduled task: Update Unified Library");
+
+            // Run auto-identify first if enabled
+            await _manager.AutoIdentifyUnmatchedSeriesAsync(progress, cancellationToken);
+
+            // Then create the unified library
             await _manager.CreateUnifiedLibraryAsync(progress);
             _logger.LogInformation("Update Unified Library task finished");
         }
