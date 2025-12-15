@@ -8,6 +8,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "1.0.6",
+        "changelog": "See release notes on GitHub",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/tetrahydroc/jellyfin-plugin-library-unifier/releases/download/v1.0.6/library-unifier-v1.0.6.zip",
+        "checksum": "48eba16ea922224ec1d107b8ae38f39a",
+        "timestamp": "2025-12-15T00:49:32Z"
+      },
+      {
         "version": "1.0.3",
         "changelog": "See release notes on GitHub",
         "targetAbi": "10.11.0.0",
