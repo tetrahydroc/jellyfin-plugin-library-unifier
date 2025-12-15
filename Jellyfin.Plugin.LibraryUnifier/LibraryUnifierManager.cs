@@ -721,7 +721,7 @@ namespace Jellyfin.Plugin.LibraryUnifier
             return _libraryManager
                 .GetVirtualFolders()
                 .Where(vf => vf.CollectionType == CollectionTypeOptions.tvshows)
-                .Select(vf => vf.ItemId)
+                .Select(vf => Guid.TryParse(vf.ItemId, out var id) ? id : Guid.Empty)
                 .Where(id => id != Guid.Empty)
                 .ToArray();
         }
