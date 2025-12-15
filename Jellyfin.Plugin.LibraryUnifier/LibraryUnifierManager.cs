@@ -288,12 +288,22 @@ namespace Jellyfin.Plugin.LibraryUnifier
 
             _logger.LogInformation("Starting auto-identify for unmatched series...");
 
-            // Get all series
+            // Get only TV show library IDs to avoid processing movie/video libraries
+            var tvLibraryIds = GetTvShowLibraryIds();
+
+            if (tvLibraryIds.Length == 0)
+            {
+                _logger.LogWarning("No TV show libraries found for auto-identify.");
+                return;
+            }
+
+            // Get all series from TV show libraries only
             var allSeries = _libraryManager
                 .GetItemList(new InternalItemsQuery
                 {
                     IncludeItemTypes = [BaseItemKind.Series],
                     Recursive = true,
+                    TopParentIds = tvLibraryIds,
                 })
                 .OfType<Series>()
                 .ToList();
@@ -677,6 +687,17 @@ namespace Jellyfin.Plugin.LibraryUnifier
 
         private List<Episode> GetAllEpisodesWithMetadata()
         {
+            // Get only TV show library IDs to avoid processing movie/video libraries
+            var tvLibraryIds = GetTvShowLibraryIds();
+
+            if (tvLibraryIds.Length == 0)
+            {
+                _logger.LogWarning("No TV show libraries found. Make sure you have libraries configured with the 'Shows' content type.");
+                return new List<Episode>();
+            }
+
+            _logger.LogDebug($"Filtering to {tvLibraryIds.Length} TV show libraries");
+
             return _libraryManager
                 .GetItemList(
                     new InternalItemsQuery
@@ -684,11 +705,25 @@ namespace Jellyfin.Plugin.LibraryUnifier
                         IncludeItemTypes = [BaseItemKind.Episode],
                         IsVirtualItem = false,
                         Recursive = true,
+                        TopParentIds = tvLibraryIds,
                     }
                 )
                 .Select(m => m as Episode)
                 .Where(e => e != null && !string.IsNullOrEmpty(e.Path))
                 .ToList();
+        }
+
+        /// <summary>
+        /// Gets the IDs of all TV show libraries (CollectionType = "tvshows").
+        /// </summary>
+        private Guid[] GetTvShowLibraryIds()
+        {
+            return _libraryManager
+                .GetVirtualFolders()
+                .Where(vf => string.Equals(vf.CollectionType, "tvshows", StringComparison.OrdinalIgnoreCase))
+                .Select(vf => vf.ItemId)
+                .Where(id => id != Guid.Empty)
+                .ToArray();
         }
 
         private static List<string> GetAllSeriesProviderIds(Series series)
