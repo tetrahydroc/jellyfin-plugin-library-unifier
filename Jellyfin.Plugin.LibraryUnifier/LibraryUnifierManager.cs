@@ -714,13 +714,13 @@ namespace Jellyfin.Plugin.LibraryUnifier
         }
 
         /// <summary>
-        /// Gets the IDs of all TV show libraries (CollectionType = "tvshows").
+        /// Gets the IDs of all TV show libraries (CollectionType = tvshows).
         /// </summary>
         private Guid[] GetTvShowLibraryIds()
         {
             return _libraryManager
                 .GetVirtualFolders()
-                .Where(vf => string.Equals(vf.CollectionType, "tvshows", StringComparison.OrdinalIgnoreCase))
+                .Where(vf => vf.CollectionType == CollectionTypeOptions.tvshows)
                 .Select(vf => vf.ItemId)
                 .Where(id => id != Guid.Empty)
                 .ToArray();
