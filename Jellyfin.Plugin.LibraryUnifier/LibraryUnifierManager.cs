@@ -719,19 +719,17 @@ namespace Jellyfin.Plugin.LibraryUnifier
                 var collectionType = collectionFolder.CollectionType;
 
                 // Only include if it's a TV shows library
-                // CollectionType is null for mixed libraries, "tvshows" for TV libraries
-                if (collectionType == CollectionTypeOptions.tvshows)
+                if (collectionType == CollectionType.tvshows)
                 {
                     return true;
                 }
 
                 // Exclude movies, music videos, and other non-TV types
-                if (collectionType == CollectionTypeOptions.movies ||
-                    collectionType == CollectionTypeOptions.musicvideos ||
-                    collectionType == CollectionTypeOptions.music ||
-                    collectionType == CollectionTypeOptions.homevideos ||
-                    collectionType == CollectionTypeOptions.photos ||
-                    collectionType == CollectionTypeOptions.books)
+                if (collectionType == CollectionType.movies ||
+                    collectionType == CollectionType.musicvideos ||
+                    collectionType == CollectionType.music ||
+                    collectionType == CollectionType.homevideos ||
+                    collectionType == CollectionType.books)
                 {
                     _logger.LogDebug($"Excluding item '{item.Name}' from library type: {collectionType}");
                     return false;
