@@ -288,24 +288,15 @@ namespace Jellyfin.Plugin.LibraryUnifier
 
             _logger.LogInformation("Starting auto-identify for unmatched series...");
 
-            // Get only TV show library IDs to avoid processing movie/video libraries
-            var tvLibraryIds = GetTvShowLibraryIds();
-
-            if (tvLibraryIds.Length == 0)
-            {
-                _logger.LogWarning("No TV show libraries found for auto-identify.");
-                return;
-            }
-
-            // Get all series from TV show libraries only
+            // Get all series and filter to TV show libraries only
             var allSeries = _libraryManager
                 .GetItemList(new InternalItemsQuery
                 {
                     IncludeItemTypes = [BaseItemKind.Series],
                     Recursive = true,
-                    TopParentIds = tvLibraryIds,
                 })
                 .OfType<Series>()
+                .Where(s => IsInTvShowLibrary(s))
                 .ToList();
 
             // Find series without provider IDs
@@ -687,43 +678,68 @@ namespace Jellyfin.Plugin.LibraryUnifier
 
         private List<Episode> GetAllEpisodesWithMetadata()
         {
-            // Get only TV show library IDs to avoid processing movie/video libraries
-            var tvLibraryIds = GetTvShowLibraryIds();
-
-            if (tvLibraryIds.Length == 0)
-            {
-                _logger.LogWarning("No TV show libraries found. Make sure you have libraries configured with the 'Shows' content type.");
-                return new List<Episode>();
-            }
-
-            _logger.LogDebug($"Filtering to {tvLibraryIds.Length} TV show libraries");
-
-            return _libraryManager
+            // Get all episodes first
+            var allEpisodes = _libraryManager
                 .GetItemList(
                     new InternalItemsQuery
                     {
                         IncludeItemTypes = [BaseItemKind.Episode],
                         IsVirtualItem = false,
                         Recursive = true,
-                        TopParentIds = tvLibraryIds,
                     }
                 )
                 .Select(m => m as Episode)
                 .Where(e => e != null && !string.IsNullOrEmpty(e.Path))
                 .ToList();
+
+            // Filter to only episodes from TV show libraries
+            var filteredEpisodes = allEpisodes
+                .Where(e => IsInTvShowLibrary(e))
+                .ToList();
+
+            _logger.LogInformation($"Found {allEpisodes.Count} total episodes, {filteredEpisodes.Count} in TV show libraries");
+
+            return filteredEpisodes;
         }
 
         /// <summary>
-        /// Gets the IDs of all TV show libraries (CollectionType = tvshows).
+        /// Checks if an item belongs to a TV show library (not movies/videos).
         /// </summary>
-        private Guid[] GetTvShowLibraryIds()
+        private bool IsInTvShowLibrary(BaseItem item)
         {
-            return _libraryManager
-                .GetVirtualFolders()
-                .Where(vf => vf.CollectionType == CollectionTypeOptions.tvshows)
-                .Select(vf => Guid.TryParse(vf.ItemId, out var id) ? id : Guid.Empty)
-                .Where(id => id != Guid.Empty)
-                .ToArray();
+            if (item == null) return false;
+
+            // Get the top parent (library folder) for this item
+            var topParent = item.GetTopParent();
+            if (topParent == null) return true; // If we can't determine, include it
+
+            // Check if it's a CollectionFolder and get its collection type
+            if (topParent is CollectionFolder collectionFolder)
+            {
+                var collectionType = collectionFolder.CollectionType;
+
+                // Only include if it's a TV shows library
+                // CollectionType is null for mixed libraries, "tvshows" for TV libraries
+                if (collectionType == CollectionTypeOptions.tvshows)
+                {
+                    return true;
+                }
+
+                // Exclude movies, music videos, and other non-TV types
+                if (collectionType == CollectionTypeOptions.movies ||
+                    collectionType == CollectionTypeOptions.musicvideos ||
+                    collectionType == CollectionTypeOptions.music ||
+                    collectionType == CollectionTypeOptions.homevideos ||
+                    collectionType == CollectionTypeOptions.photos ||
+                    collectionType == CollectionTypeOptions.books)
+                {
+                    _logger.LogDebug($"Excluding item '{item.Name}' from library type: {collectionType}");
+                    return false;
+                }
+            }
+
+            // Default to including if we can't determine the type
+            return true;
         }
 
         private static List<string> GetAllSeriesProviderIds(Series series)
