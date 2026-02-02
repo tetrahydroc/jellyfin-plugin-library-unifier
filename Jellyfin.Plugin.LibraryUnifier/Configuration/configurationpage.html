@@ -50,16 +50,55 @@
                             </label>
                         </div>
                     </div>
+
+                    <div class="verticalSection">
+                        <h3 class="sectionTitle">Merge Versions Settings</h3>
+                        <p>Automatically merge duplicate media files (same content, different quality) into a single entry with multiple playable versions.</p>
+                        <div class="checkboxContainer">
+                            <label>
+                                <input is="emby-checkbox" type="checkbox" id="chkEnableMergeMovies" />
+                                <span>Auto-merge duplicate movies (matches by TMDB ID)</span>
+                            </label>
+                        </div>
+                        <div class="checkboxContainer">
+                            <label>
+                                <input is="emby-checkbox" type="checkbox" id="chkEnableMergeEpisodes" />
+                                <span>Auto-merge duplicate episodes (matches by series, season, episode name/number)</span>
+                            </label>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel" for="txtLocationsExcluded">Paths to exclude from merging (one per line):</label>
+                            <textarea is="emby-textarea" id="txtLocationsExcluded" rows="3"
+                                placeholder="/path/to/exclude&#10;/another/path"></textarea>
+                            <div class="fieldDescription">Media in these paths will not be merged with other versions.</div>
+                        </div>
+                    </div>
                     <br />
 
                     <button is="emby-button" type="button" class="raised button-submit block emby-button"
                         id="save-btn" onclick=save()><span>Save</span></button>
 
-                    <h3 class="sectionTitle">Actions</h3>
+                    <h3 class="sectionTitle">Unified Library Actions</h3>
                     <button is="emby-button" type="button" class="raised block"
                         onclick=createUnifiedLibrary()><span>Create Unified Library</span></button>
                     <button is="emby-button" type="button" class="raised block"
                         onclick=removeUnifiedLibrary()><span>Remove Unified Library</span></button>
+
+                    <h3 class="sectionTitle">Merge Actions</h3>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button is="emby-button" type="button" class="raised"
+                            onclick=mergeMovies()><span>Merge Movies</span></button>
+                        <button is="emby-button" type="button" class="raised"
+                            onclick=mergeEpisodes()><span>Merge Episodes</span></button>
+                    </div>
+                    <h3 class="sectionTitle">Split Actions</h3>
+                    <p style="color: #f0ad4e; font-size: 0.9em;">⚠️ Split will undo all merges - use with caution</p>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button is="emby-button" type="button" class="raised"
+                            onclick=splitMovies()><span>Split Movies</span></button>
+                        <button is="emby-button" type="button" class="raised"
+                            onclick=splitEpisodes()><span>Split Episodes</span></button>
+                    </div>
                 </form>
             </div>
         </div>
@@ -100,6 +139,68 @@
                 });
             }
 
+            function mergeMovies() {
+                var request = {
+                    url: ApiClient.getUrl('LibraryUnifier/MergeMovies'),
+                    type: 'POST'
+                };
+                ApiClient.fetch(request).then(function () {
+                    Dashboard.alert("Merging duplicate movies... Check Jellyfin logs for progress.");
+                }).catch(function () {
+                    Dashboard.alert({
+                        message: "Unexpected error occurred!"
+                    });
+                });
+            }
+
+            function mergeEpisodes() {
+                var request = {
+                    url: ApiClient.getUrl('LibraryUnifier/MergeEpisodes'),
+                    type: 'POST'
+                };
+                ApiClient.fetch(request).then(function () {
+                    Dashboard.alert("Merging duplicate episodes... Check Jellyfin logs for progress.");
+                }).catch(function () {
+                    Dashboard.alert({
+                        message: "Unexpected error occurred!"
+                    });
+                });
+            }
+
+            function splitMovies() {
+                if (!confirm("This will split ALL merged movies back to individual entries. Continue?")) {
+                    return;
+                }
+                var request = {
+                    url: ApiClient.getUrl('LibraryUnifier/SplitMovies'),
+                    type: 'POST'
+                };
+                ApiClient.fetch(request).then(function () {
+                    Dashboard.alert("Splitting merged movies... Check Jellyfin logs for progress.");
+                }).catch(function () {
+                    Dashboard.alert({
+                        message: "Unexpected error occurred!"
+                    });
+                });
+            }
+
+            function splitEpisodes() {
+                if (!confirm("This will split ALL merged episodes back to individual entries. Continue?")) {
+                    return;
+                }
+                var request = {
+                    url: ApiClient.getUrl('LibraryUnifier/SplitEpisodes'),
+                    type: 'POST'
+                };
+                ApiClient.fetch(request).then(function () {
+                    Dashboard.alert("Splitting merged episodes... Check Jellyfin logs for progress.");
+                }).catch(function () {
+                    Dashboard.alert({
+                        message: "Unexpected error occurred!"
+                    });
+                });
+            }
+
             var config = {};
 
             ApiClient.getPluginConfiguration(pluginId).then(function (savedConfig) {
@@ -108,17 +209,29 @@
                 document.getElementById('txtUnifiedLibraryPath').value = config.UnifiedLibraryPath || '';
                 document.getElementById('chkPreferHardlinks').checked = config.PreferHardlinks !== false;
                 document.getElementById('chkEnableAutoIdentify').checked = config.EnableAutoIdentify !== false;
+                document.getElementById('chkEnableMergeMovies').checked = config.EnableMergeMovies === true;
+                document.getElementById('chkEnableMergeEpisodes').checked = config.EnableMergeEpisodes === true;
+                document.getElementById('txtLocationsExcluded').value = (config.LocationsExcludedFromMerge || []).join('\n');
             });
 
             function save() {
                 var unifiedPath = document.getElementById('txtUnifiedLibraryPath').value;
                 var preferHardlinks = document.getElementById('chkPreferHardlinks').checked;
                 var enableAutoIdentify = document.getElementById('chkEnableAutoIdentify').checked;
+                var enableMergeMovies = document.getElementById('chkEnableMergeMovies').checked;
+                var enableMergeEpisodes = document.getElementById('chkEnableMergeEpisodes').checked;
+                var locationsExcluded = document.getElementById('txtLocationsExcluded').value
+                    .split('\n')
+                    .map(function(s) { return s.trim(); })
+                    .filter(function(s) { return s.length > 0; });
 
                 ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                     config.UnifiedLibraryPath = unifiedPath;
                     config.PreferHardlinks = preferHardlinks;
                     config.EnableAutoIdentify = enableAutoIdentify;
+                    config.EnableMergeMovies = enableMergeMovies;
+                    config.EnableMergeEpisodes = enableMergeEpisodes;
+                    config.LocationsExcludedFromMerge = locationsExcluded;
                     ApiClient.updatePluginConfiguration(pluginId, config).then(function (res) {
                         Dashboard.processPluginConfigurationUpdateResult(res);
                     });

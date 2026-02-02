@@ -19,11 +19,29 @@ namespace Jellyfin.Plugin.LibraryUnifier.Configuration
         /// </summary>
         public bool EnableAutoIdentify { get; set; }
 
+        /// <summary>
+        /// Whether to automatically merge duplicate movie versions (same TMDB ID, different quality).
+        /// </summary>
+        public bool EnableMergeMovies { get; set; }
+
+        /// <summary>
+        /// Whether to automatically merge duplicate episode versions (same episode, different quality).
+        /// </summary>
+        public bool EnableMergeEpisodes { get; set; }
+
+        /// <summary>
+        /// Paths to exclude from merge operations.
+        /// </summary>
+        public string[] LocationsExcludedFromMerge { get; set; }
+
         public PluginConfiguration()
         {
             UnifiedLibraryPath = string.Empty;
             PreferHardlinks = true;
             EnableAutoIdentify = true;
+            EnableMergeMovies = false;
+            EnableMergeEpisodes = false;
+            LocationsExcludedFromMerge = [];
         }
     }
 }

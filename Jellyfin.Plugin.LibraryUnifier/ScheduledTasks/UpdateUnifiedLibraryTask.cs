@@ -35,6 +35,11 @@ namespace Jellyfin.Plugin.LibraryUnifier.ScheduledTasks
 
             // Then create the unified library
             await _manager.CreateUnifiedLibraryAsync(progress);
+
+            // Merge duplicate versions if enabled
+            await _manager.MergeMoviesAsync(progress, cancellationToken);
+            await _manager.MergeEpisodesAsync(progress, cancellationToken);
+
             _logger.LogInformation("Update Unified Library task finished");
         }
 

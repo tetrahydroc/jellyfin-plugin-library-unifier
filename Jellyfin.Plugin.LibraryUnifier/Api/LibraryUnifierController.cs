@@ -68,5 +68,65 @@ namespace Jellyfin.Plugin.LibraryUnifier.Api
             _logger.LogInformation("Completed removing unified library");
             return NoContent();
         }
+
+        /// <summary>
+        /// Merges duplicate movie versions (same TMDB ID, different quality).
+        /// </summary>
+        /// <response code="204">Movie merge started successfully.</response>
+        /// <returns>A <see cref="NoContentResult"/> indicating success.</returns>
+        [HttpPost("MergeMovies")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public async Task<ActionResult> MergeMoviesAsync()
+        {
+            _logger.LogInformation("Merging duplicate movie versions");
+            await _manager.MergeMoviesAsync(null, CancellationToken.None);
+            _logger.LogInformation("Completed merging movies");
+            return NoContent();
+        }
+
+        /// <summary>
+        /// Merges duplicate episode versions (same episode, different quality).
+        /// </summary>
+        /// <response code="204">Episode merge started successfully.</response>
+        /// <returns>A <see cref="NoContentResult"/> indicating success.</returns>
+        [HttpPost("MergeEpisodes")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public async Task<ActionResult> MergeEpisodesAsync()
+        {
+            _logger.LogInformation("Merging duplicate episode versions");
+            await _manager.MergeEpisodesAsync(null, CancellationToken.None);
+            _logger.LogInformation("Completed merging episodes");
+            return NoContent();
+        }
+
+        /// <summary>
+        /// Splits all merged movie versions back to individual items.
+        /// </summary>
+        /// <response code="204">Movie split started successfully.</response>
+        /// <returns>A <see cref="NoContentResult"/> indicating success.</returns>
+        [HttpPost("SplitMovies")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public async Task<ActionResult> SplitMoviesAsync()
+        {
+            _logger.LogInformation("Splitting merged movie versions");
+            await _manager.SplitMoviesAsync(null, CancellationToken.None);
+            _logger.LogInformation("Completed splitting movies");
+            return NoContent();
+        }
+
+        /// <summary>
+        /// Splits all merged episode versions back to individual items.
+        /// </summary>
+        /// <response code="204">Episode split started successfully.</response>
+        /// <returns>A <see cref="NoContentResult"/> indicating success.</returns>
+        [HttpPost("SplitEpisodes")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public async Task<ActionResult> SplitEpisodesAsync()
+        {
+            _logger.LogInformation("Splitting merged episode versions");
+            await _manager.SplitEpisodesAsync(null, CancellationToken.None);
+            _logger.LogInformation("Completed splitting episodes");
+            return NoContent();
+        }
     }
 }

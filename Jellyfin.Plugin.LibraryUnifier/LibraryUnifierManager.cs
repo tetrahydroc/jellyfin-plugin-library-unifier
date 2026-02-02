@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -7,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
@@ -652,6 +654,406 @@ namespace Jellyfin.Plugin.LibraryUnifier
             return Task.CompletedTask;
         }
 
+        #region Merge Versions
+
+        /// <summary>
+        /// Merges duplicate movie versions (same TMDB ID, different quality files).
+        /// </summary>
+        public async Task MergeMoviesAsync(IProgress<double> progress, CancellationToken cancellationToken)
+        {
+            var config = Plugin.Instance?.PluginConfiguration;
+            if (config == null || !config.EnableMergeMovies)
+            {
+                _logger.LogDebug("Movie merging is disabled in configuration");
+                return;
+            }
+
+            _logger.LogInformation("Scanning for duplicate movies to merge...");
+
+            var movies = GetMoviesFromLibrary();
+            _logger.LogInformation($"Found {movies.Count} eligible movies");
+
+            var duplicateMovies = movies
+                .Where(m => m.ProviderIds.ContainsKey("Tmdb"))
+                .GroupBy(x => x.ProviderIds["Tmdb"])
+                .Where(group => group.Count() > 1 &&
+                    group.Any(movie => movie.PrimaryVersionId == null &&
+                                       !movie.LinkedAlternateVersions.Any()))
+                .ToList();
+
+            _logger.LogInformation($"Found {duplicateMovies.Count} movie groups with duplicates");
+
+            var current = 0;
+            var merged = 0;
+
+            foreach (var group in duplicateMovies)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                current++;
+                var percent = current / (double)duplicateMovies.Count * 100;
+                progress?.Report((int)percent);
+
+                var firstMovie = group.First();
+                _logger.LogInformation($"Merging movie: {firstMovie.Name} ({firstMovie.ProductionYear}) - {group.Count()} versions");
+
+                try
+                {
+                    await MergeVersionsAsync(group.Select(e => e.Id).ToList()).ConfigureAwait(false);
+                    merged++;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, $"Failed to merge movie: {firstMovie.Name}");
+                }
+            }
+
+            _logger.LogInformation($"Movie merge complete. Merged {merged} movie groups.");
+            progress?.Report(100);
+        }
+
+        /// <summary>
+        /// Merges duplicate episode versions (same episode, different quality files).
+        /// </summary>
+        public async Task MergeEpisodesAsync(IProgress<double> progress, CancellationToken cancellationToken)
+        {
+            var config = Plugin.Instance?.PluginConfiguration;
+            if (config == null || !config.EnableMergeEpisodes)
+            {
+                _logger.LogDebug("Episode merging is disabled in configuration");
+                return;
+            }
+
+            _logger.LogInformation("Scanning for duplicate episodes to merge...");
+
+            var episodes = GetEpisodesFromLibrary();
+            _logger.LogInformation($"Found {episodes.Count} eligible episodes");
+
+            var duplicateEpisodes = episodes
+                .GroupBy(x => new
+                {
+                    x.SeriesName,
+                    x.SeasonName,
+                    x.Name,
+                    x.IndexNumber,
+                    x.ProductionYear
+                })
+                .Where(x => x.Count() > 1)
+                .ToList();
+
+            _logger.LogInformation($"Found {duplicateEpisodes.Count} episode groups with duplicates");
+
+            var current = 0;
+            var merged = 0;
+
+            foreach (var group in duplicateEpisodes)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                current++;
+                var percent = current / (double)duplicateEpisodes.Count * 100;
+                progress?.Report((int)percent);
+
+                var firstEpisode = group.First();
+                _logger.LogInformation($"Merging episode: {firstEpisode.SeriesName} - {firstEpisode.SeasonName} - {firstEpisode.Name} - {group.Count()} versions");
+
+                try
+                {
+                    await MergeVersionsAsync(group.Select(e => e.Id).ToList()).ConfigureAwait(false);
+                    merged++;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, $"Failed to merge episode: {firstEpisode.Name}");
+                }
+            }
+
+            _logger.LogInformation($"Episode merge complete. Merged {merged} episode groups.");
+            progress?.Report(100);
+        }
+
+        /// <summary>
+        /// Splits all merged movie versions back to individual items.
+        /// </summary>
+        public async Task SplitMoviesAsync(IProgress<double> progress, CancellationToken cancellationToken)
+        {
+            _logger.LogInformation("Splitting all merged movies...");
+
+            var movies = GetMoviesFromLibrary();
+            var current = 0;
+            var split = 0;
+
+            foreach (var movie in movies)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                current++;
+                var percent = current / (double)movies.Count * 100;
+                progress?.Report((int)percent);
+
+                if (movie.LinkedAlternateVersions.Length > 0 || movie.PrimaryVersionId != null)
+                {
+                    _logger.LogInformation($"Splitting movie: {movie.Name} ({movie.ProductionYear})");
+                    try
+                    {
+                        await SplitVersionsAsync(movie.Id).ConfigureAwait(false);
+                        split++;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, $"Failed to split movie: {movie.Name}");
+                    }
+                }
+            }
+
+            _logger.LogInformation($"Movie split complete. Split {split} movies.");
+            progress?.Report(100);
+        }
+
+        /// <summary>
+        /// Splits all merged episode versions back to individual items.
+        /// </summary>
+        public async Task SplitEpisodesAsync(IProgress<double> progress, CancellationToken cancellationToken)
+        {
+            _logger.LogInformation("Splitting all merged episodes...");
+
+            var episodes = GetEpisodesFromLibrary();
+            var current = 0;
+            var split = 0;
+
+            foreach (var episode in episodes)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                current++;
+                var percent = current / (double)episodes.Count * 100;
+                progress?.Report((int)percent);
+
+                if (episode.LinkedAlternateVersions.Length > 0 || episode.PrimaryVersionId != null)
+                {
+                    _logger.LogInformation($"Splitting episode: {episode.SeriesName} - {episode.Name}");
+                    try
+                    {
+                        await SplitVersionsAsync(episode.Id).ConfigureAwait(false);
+                        split++;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, $"Failed to split episode: {episode.Name}");
+                    }
+                }
+            }
+
+            _logger.LogInformation($"Episode split complete. Split {split} episodes.");
+            progress?.Report(100);
+        }
+
+        private async Task MergeVersionsAsync(List<Guid> ids)
+        {
+            var items = ids.Select(i => _libraryManager.GetItemById<BaseItem>(i, null))
+                .OfType<Video>()
+                .OrderBy(i => i.Id)
+                .ToList();
+
+            if (items.Count < 2)
+            {
+                return;
+            }
+
+            // Select primary version: prefer one that already has multiple sources,
+            // otherwise prefer highest resolution standard video file
+            var primaryVersion = items.FirstOrDefault(i =>
+                i.MediaSourceCount > 1 && string.IsNullOrEmpty(i.PrimaryVersionId)
+            );
+
+            if (primaryVersion is null)
+            {
+                primaryVersion = items
+                    .OrderBy(i =>
+                    {
+                        // Prefer standard video files over 3D or special formats
+                        if (i.Video3DFormat.HasValue || i.VideoType != VideoType.VideoFile)
+                        {
+                            return 1;
+                        }
+                        return 0;
+                    })
+                    .ThenByDescending(i => i.GetDefaultVideoStream()?.Width ?? 0)
+                    .First();
+            }
+
+            var alternateVersionsOfPrimary = primaryVersion
+                .LinkedAlternateVersions.Where(l => items.Any(i => i.Path == l.Path))
+                .ToList();
+
+            var alternateVersionsChanged = false;
+
+            foreach (var item in items.Where(i =>
+                !i.Id.Equals(primaryVersion.Id) &&
+                !alternateVersionsOfPrimary.Any(l => l.ItemId == i.Id)))
+            {
+                // Set this item's primary version reference
+                item.SetPrimaryVersionId(
+                    primaryVersion.Id.ToString("N", CultureInfo.InvariantCulture)
+                );
+
+                await item.UpdateToRepositoryAsync(
+                        ItemUpdateType.MetadataEdit,
+                        CancellationToken.None
+                    )
+                    .ConfigureAwait(false);
+
+                // Add to primary's alternate versions list
+                AddToAlternateVersionsIfNotPresent(alternateVersionsOfPrimary,
+                    new LinkedChild { Path = item.Path, ItemId = item.Id });
+
+                // Move any alternate versions from this item to the primary
+                foreach (var linkedItem in item.LinkedAlternateVersions)
+                {
+                    AddToAlternateVersionsIfNotPresent(alternateVersionsOfPrimary, linkedItem);
+                }
+
+                // Clear this item's alternate versions
+                if (item.LinkedAlternateVersions.Length > 0)
+                {
+                    item.LinkedAlternateVersions = [];
+                    await item.UpdateToRepositoryAsync(
+                            ItemUpdateType.MetadataEdit,
+                            CancellationToken.None
+                        )
+                        .ConfigureAwait(false);
+                }
+
+                alternateVersionsChanged = true;
+            }
+
+            if (alternateVersionsChanged)
+            {
+                primaryVersion.LinkedAlternateVersions = alternateVersionsOfPrimary.ToArray();
+                await primaryVersion
+                    .UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        private async Task SplitVersionsAsync(Guid itemId)
+        {
+            var item = _libraryManager.GetItemById<Video>(itemId);
+            if (item is null)
+            {
+                return;
+            }
+
+            // If this is an alternate version, get the primary instead
+            if (item.LinkedAlternateVersions.Length == 0 && item.PrimaryVersionId != null)
+            {
+                item = _libraryManager.GetItemById<Video>(Guid.Parse(item.PrimaryVersionId));
+            }
+
+            if (item is null)
+            {
+                return;
+            }
+
+            // Unlink all alternate versions
+            foreach (var link in item.GetLinkedAlternateVersions())
+            {
+                link.SetPrimaryVersionId(null);
+                link.LinkedAlternateVersions = [];
+
+                await link.UpdateToRepositoryAsync(
+                        ItemUpdateType.MetadataEdit,
+                        CancellationToken.None
+                    )
+                    .ConfigureAwait(false);
+            }
+
+            // Clear the primary's alternate versions
+            item.LinkedAlternateVersions = [];
+            item.SetPrimaryVersionId(null);
+            await item.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+
+        private List<Movie> GetMoviesFromLibrary()
+        {
+            return _libraryManager
+                .GetItemList(
+                    new InternalItemsQuery
+                    {
+                        IncludeItemTypes = [BaseItemKind.Movie],
+                        IsVirtualItem = false,
+                        Recursive = true,
+                    }
+                )
+                .Select(m => m as Movie)
+                .Where(m => m != null && IsEligibleForMerge(m))
+                .ToList();
+        }
+
+        private List<Episode> GetEpisodesFromLibrary()
+        {
+            return _libraryManager
+                .GetItemList(
+                    new InternalItemsQuery
+                    {
+                        IncludeItemTypes = [BaseItemKind.Episode],
+                        IsVirtualItem = false,
+                        Recursive = true,
+                    }
+                )
+                .Select(m => m as Episode)
+                .Where(e => e != null && IsEligibleForMerge(e))
+                .ToList();
+        }
+
+        private bool IsEligibleForMerge(BaseItem item)
+        {
+            if (item == null || string.IsNullOrEmpty(item.Path))
+            {
+                return false;
+            }
+
+            // Check if in excluded location
+            var config = Plugin.Instance?.PluginConfiguration;
+            if (config?.LocationsExcludedFromMerge != null)
+            {
+                foreach (var excludedPath in config.LocationsExcludedFromMerge)
+                {
+                    if (!string.IsNullOrEmpty(excludedPath) &&
+                        _fileSystem.ContainsSubPath(excludedPath, item.Path))
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        private static void AddToAlternateVersionsIfNotPresent(List<LinkedChild> alternateVersions, LinkedChild newVersion)
+        {
+            if (!alternateVersions.Any(i =>
+                string.Equals(i.Path, newVersion.Path, StringComparison.OrdinalIgnoreCase)))
+            {
+                alternateVersions.Add(newVersion);
+            }
+        }
+
+        #endregion
+
         private void RemoveLinksRecursively(string path, IProgress<double> progress)
         {
             var directories = Directory.GetDirectories(path);
@@ -692,12 +1094,26 @@ namespace Jellyfin.Plugin.LibraryUnifier
                 .Where(e => e != null && !string.IsNullOrEmpty(e.Path))
                 .ToList();
 
+            _logger.LogInformation($"Found {allEpisodes.Count} total episodes before filtering");
+
+            // Log library types for debugging
+            if (allEpisodes.Count > 0)
+            {
+                var sampleEpisode = allEpisodes.First();
+                var topParent = sampleEpisode.GetTopParent();
+                _logger.LogInformation($"Sample episode: '{sampleEpisode.Name}', TopParent: '{topParent?.Name}', TopParent Type: '{topParent?.GetType().Name}'");
+                if (topParent is CollectionFolder cf)
+                {
+                    _logger.LogInformation($"CollectionFolder.CollectionType: '{cf.CollectionType}'");
+                }
+            }
+
             // Filter to only episodes from TV show libraries
             var filteredEpisodes = allEpisodes
                 .Where(e => IsInTvShowLibrary(e))
                 .ToList();
 
-            _logger.LogInformation($"Found {allEpisodes.Count} total episodes, {filteredEpisodes.Count} in TV show libraries");
+            _logger.LogInformation($"After filtering: {filteredEpisodes.Count} episodes in TV show libraries");
 
             return filteredEpisodes;
         }
@@ -711,7 +1127,11 @@ namespace Jellyfin.Plugin.LibraryUnifier
 
             // Get the top parent (library folder) for this item
             var topParent = item.GetTopParent();
-            if (topParent == null) return true; // If we can't determine, include it
+            if (topParent == null)
+            {
+                _logger.LogDebug($"Item '{item.Name}' has no TopParent, including by default");
+                return true;
+            }
 
             // Check if it's a CollectionFolder and get its collection type
             if (topParent is CollectionFolder collectionFolder)
@@ -734,9 +1154,14 @@ namespace Jellyfin.Plugin.LibraryUnifier
                     _logger.LogDebug($"Excluding item '{item.Name}' from library type: {collectionTypeStr}");
                     return false;
                 }
+
+                // Unknown collection type - log it and exclude to be safe
+                _logger.LogWarning($"Unknown collection type '{collectionTypeStr}' for item '{item.Name}' in library '{collectionFolder.Name}', excluding");
+                return false;
             }
 
-            // Default to including if we can't determine the type
+            // Not a CollectionFolder - log and include by default
+            _logger.LogDebug($"TopParent '{topParent.Name}' is not a CollectionFolder (type: {topParent.GetType().Name}), including by default");
             return true;
         }
 
